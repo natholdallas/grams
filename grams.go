@@ -39,17 +39,16 @@ func New(token string) TelegramBot {
 	}
 }
 
-func (s *TelegramBot) Task(spec string, handler TaskHandler) {
-	_, err := s.schedule.AddFunc(spec, func() {
-		err := handler(s.Instance)
+func (s *TelegramBot) Task(spec string, handler TaskHandler) (cron.EntryID, error) {
+	return s.schedule.AddFunc(spec, taskWrap(s.Instance, handler))
+}
+
+func taskWrap(instance *tgbotapi.BotAPI, handler TaskHandler) func() {
+	return func() {
+		err := handler(instance)
 		if err != nil {
 			log.Println(err)
 		}
-	})
-	if err != nil {
-		log.Println(err)
-	} else {
-		log.Println("cron: ", spec)
 	}
 }
 
