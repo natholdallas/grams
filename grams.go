@@ -15,10 +15,10 @@ type (
 
 type TelegramBot struct {
 	Instance                 *tgbotapi.BotAPI
+	Schedule                 *cron.Cron
 	registerCommands         []tgbotapi.BotCommand
-	defaultCommandHandler    *Handler
 	commandHanlders          map[string]Handler
-	schedule                 *cron.Cron
+	defaultCommandHandler    *Handler
 	chatHandlers             map[int64]Handler
 	defaultChatHandler       *Handler
 	successfulPaymentHandler *Handler
@@ -32,15 +32,19 @@ func New(token string) TelegramBot {
 	}
 	return TelegramBot{
 		Instance:         instance,
+		Schedule:         cron.New(cron.WithSeconds()),
 		registerCommands: []tgbotapi.BotCommand{},
 		commandHanlders:  make(map[string]Handler),
 		chatHandlers:     make(map[int64]Handler),
-		schedule:         cron.New(cron.WithSeconds()),
 	}
 }
 
 func (s *TelegramBot) Task(spec string, handler TaskHandler) (cron.EntryID, error) {
-	return s.schedule.AddFunc(spec, taskWrap(s.Instance, handler))
+	return s.Schedule.AddFunc(spec, taskWrap(s.Instance, handler))
+}
+
+func (s *TelegramBot) RemoveTask(id cron.EntryID) {
+	s.Schedule.Remove(id)
 }
 
 func taskWrap(instance *tgbotapi.BotAPI, handler TaskHandler) func() {
@@ -78,7 +82,7 @@ func (s *TelegramBot) OnPrecheckoutQuery(handler Handler) {
 }
 
 func (s *TelegramBot) Listen() {
-	s.schedule.Start()
+	s.Schedule.Start()
 	s.Instance.Request(tgbotapi.NewSetMyCommands(s.registerCommands...))
 	for ut := range s.Instance.GetUpdatesChan(tgbotapi.NewUpdate(0)) {
 		if ut.Message != nil {
