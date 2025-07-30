@@ -17,6 +17,7 @@ type TelegramBot struct {
 	Instance                 *tgbotapi.BotAPI
 	Schedule                 *cron.Cron
 	registerCommands         []tgbotapi.BotCommand
+	msgHandler               *Handler
 	commandHanlders          map[string]Handler
 	defaultCommandHandler    *Handler
 	chatHandlers             map[int64]Handler
@@ -86,9 +87,13 @@ func (s *TelegramBot) Listen() {
 	s.Instance.Request(tgbotapi.NewSetMyCommands(s.registerCommands...))
 	for ut := range s.Instance.GetUpdatesChan(tgbotapi.NewUpdate(0)) {
 		if ut.Message != nil {
-			// handle command
+
 			if ut.Message.IsCommand() {
+				// handle command
 				s.handleCommand(ut)
+			} else {
+				// handle msg
+				s.handleMessage(ut)
 			}
 
 			// handle successful payment
@@ -116,6 +121,15 @@ func (s *TelegramBot) Listen() {
 			}
 		}
 
+	}
+}
+
+func (s *TelegramBot) handleMessage(ut tgbotapi.Update) {
+	if s.msgHandler == nil {
+		return
+	}
+	if err := (*s.msgHandler)(s.Instance, ut); err != nil {
+		log.Println(err)
 	}
 }
 
