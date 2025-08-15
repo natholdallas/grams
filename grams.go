@@ -17,19 +17,24 @@ type TelegramBot struct {
 	Instance *tgbotapi.BotAPI
 	Schedule *cron.Cron
 
-	updateHandlers []Handler
+	AllowedUpdates []string
+	Limit          int
+	Offset         int
+	Timeout        int
 
-	registerCommands      []tgbotapi.BotCommand
-	commandHanlders       map[string]Handler
-	defaultCommandHandler *Handler
-	msgHandlers           []Handler
+	UpdateHandlers []Handler
 
-	chatHandlers       map[int64]Handler
-	defaultChatHandler *Handler
+	RegisterCommands      []tgbotapi.BotCommand
+	CommandHanlders       map[string]Handler
+	DefaultCommandHandler *Handler
+	MsgHandlers           []Handler
 
-	successfulPaymentHandler *Handler
-	preCheckoutQueryHandler  *Handler
-	callbackQueryHandler     *Handler
+	ChatHandlers       map[int64]Handler
+	DefaultChatHandler *Handler
+
+	SuccessfulPaymentHandler *Handler
+	PreCheckoutQueryHandler  *Handler
+	CallbackQueryHandler     *Handler
 }
 
 func New(token string) TelegramBot {
@@ -40,11 +45,11 @@ func New(token string) TelegramBot {
 	return TelegramBot{
 		Instance:         instance,
 		Schedule:         cron.New(cron.WithSeconds()),
-		updateHandlers:   []Handler{},
-		msgHandlers:      []Handler{},
-		registerCommands: []tgbotapi.BotCommand{},
-		commandHanlders:  make(map[string]Handler),
-		chatHandlers:     make(map[int64]Handler),
+		UpdateHandlers:   []Handler{},
+		MsgHandlers:      []Handler{},
+		RegisterCommands: []tgbotapi.BotCommand{},
+		CommandHanlders:  make(map[string]Handler),
+		ChatHandlers:     make(map[int64]Handler),
 	}
 }
 
@@ -66,48 +71,53 @@ func taskWrap(instance *tgbotapi.BotAPI, handler TaskHandler) func() {
 }
 
 func (s *TelegramBot) NewCommand(command tgbotapi.BotCommand, handler Handler) {
-	s.registerCommands = append(s.registerCommands, command)
-	s.commandHanlders[command.Command] = handler
+	s.RegisterCommands = append(s.RegisterCommands, command)
+	s.CommandHanlders[command.Command] = handler
 }
 
 func (s *TelegramBot) NewDefaultCommand(handler Handler) {
-	s.defaultCommandHandler = &handler
+	s.DefaultCommandHandler = &handler
 }
 
 func (s *TelegramBot) NewChatMember(chatID int64, handler Handler) {
-	s.chatHandlers[chatID] = handler
+	s.ChatHandlers[chatID] = handler
 }
 
 func (s *TelegramBot) NewDefaultChatMember(handler Handler) {
-	s.defaultChatHandler = &handler
+	s.DefaultChatHandler = &handler
 }
 
 func (s *TelegramBot) NewUpdateEvent(handler Handler) {
-	s.updateHandlers = append(s.updateHandlers, handler)
+	s.UpdateHandlers = append(s.UpdateHandlers, handler)
 }
 
 func (s *TelegramBot) NewMessage(handler Handler) {
-	s.msgHandlers = append(s.msgHandlers, handler)
+	s.MsgHandlers = append(s.MsgHandlers, handler)
 }
 
 func (s *TelegramBot) OnSuccessfulPayment(handler Handler) {
-	s.successfulPaymentHandler = &handler
+	s.SuccessfulPaymentHandler = &handler
 }
 
 func (s *TelegramBot) OnPrecheckoutQuery(handler Handler) {
-	s.preCheckoutQueryHandler = &handler
+	s.PreCheckoutQueryHandler = &handler
 }
 
 func (s *TelegramBot) OnCallbackQuery(handler Handler) {
-	s.callbackQueryHandler = &handler
+	s.CallbackQueryHandler = &handler
 }
 
 func (s *TelegramBot) Listen() {
 	s.Schedule.Start()
-	s.Instance.Request(tgbotapi.NewSetMyCommands(s.registerCommands...))
-	for ut := range s.Instance.GetUpdatesChan(tgbotapi.NewUpdate(0)) {
+	s.Instance.Request(tgbotapi.NewSetMyCommands(s.RegisterCommands...))
+	update := tgbotapi.NewUpdate(0)
+	update.AllowedUpdates = s.AllowedUpdates
+	update.Limit = s.Limit
+	update.Offset = s.Offset
+	update.Timeout = s.Timeout
+	for ut := range s.Instance.GetUpdatesChan(update) {
 		// global update event
-		for _, fun := range s.updateHandlers {
+		for _, fun := range s.UpdateHandlers {
 			s.execHandler(&fun, ut)
 		}
 
@@ -115,41 +125,41 @@ func (s *TelegramBot) Listen() {
 		if ut.Message != nil {
 			if ut.Message.IsCommand() {
 				// handle command
-				if h, ok := s.commandHanlders[ut.Message.Command()]; ok {
+				if h, ok := s.CommandHanlders[ut.Message.Command()]; ok {
 					s.execHandler(&h, ut)
 				} else {
-					s.execHandler(s.defaultCommandHandler, ut)
+					s.execHandler(s.DefaultCommandHandler, ut)
 				}
 			} else {
 				// handle msg
-				for _, fun := range s.msgHandlers {
+				for _, fun := range s.MsgHandlers {
 					s.execHandler(&fun, ut)
 				}
 			}
 
 			// handle successful payment
 			if ut.Message.SuccessfulPayment != nil {
-				s.execHandler(s.successfulPaymentHandler, ut)
+				s.execHandler(s.SuccessfulPaymentHandler, ut)
 			}
 		}
 
 		// handle chat member event
 		if ut.ChatMember != nil {
-			if h, ok := s.chatHandlers[ut.ChatMember.Chat.ID]; ok {
+			if h, ok := s.ChatHandlers[ut.ChatMember.Chat.ID]; ok {
 				s.execHandler(&h, ut)
 			} else {
-				s.execHandler(s.defaultChatHandler, ut)
+				s.execHandler(s.DefaultChatHandler, ut)
 			}
 		}
 
 		// handle precheckout
 		if ut.PreCheckoutQuery != nil {
-			s.execHandler(s.preCheckoutQueryHandler, ut)
+			s.execHandler(s.PreCheckoutQueryHandler, ut)
 		}
 
 		// handle callback
 		if ut.CallbackQuery != nil {
-			s.execHandler(s.callbackQueryHandler, ut)
+			s.execHandler(s.CallbackQueryHandler, ut)
 		}
 
 	}
