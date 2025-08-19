@@ -118,7 +118,7 @@ func (s *TelegramBot) Listen() {
 	for ut := range s.Instance.GetUpdatesChan(update) {
 		// global update event
 		for _, fun := range s.UpdateHandlers {
-			s.execHandler(&fun, ut)
+			go s.exec(&fun, ut)
 		}
 
 		// message
@@ -126,46 +126,46 @@ func (s *TelegramBot) Listen() {
 			if ut.Message.IsCommand() {
 				// handle command
 				if h, ok := s.CommandHanlders[ut.Message.Command()]; ok {
-					s.execHandler(&h, ut)
+					go s.exec(&h, ut)
 				} else {
-					s.execHandler(s.DefaultCommandHandler, ut)
+					go s.exec(s.DefaultCommandHandler, ut)
 				}
 			} else {
 				// handle msg
 				for _, fun := range s.MsgHandlers {
-					s.execHandler(&fun, ut)
+					go s.exec(&fun, ut)
 				}
 			}
 
 			// handle successful payment
 			if ut.Message.SuccessfulPayment != nil {
-				s.execHandler(s.SuccessfulPaymentHandler, ut)
+				go s.exec(s.SuccessfulPaymentHandler, ut)
 			}
 		}
 
 		// handle chat member event
 		if ut.ChatMember != nil {
 			if h, ok := s.ChatHandlers[ut.ChatMember.Chat.ID]; ok {
-				s.execHandler(&h, ut)
+				go s.exec(&h, ut)
 			} else {
-				s.execHandler(s.DefaultChatHandler, ut)
+				go s.exec(s.DefaultChatHandler, ut)
 			}
 		}
 
 		// handle precheckout
 		if ut.PreCheckoutQuery != nil {
-			s.execHandler(s.PreCheckoutQueryHandler, ut)
+			go s.exec(s.PreCheckoutQueryHandler, ut)
 		}
 
 		// handle callback
 		if ut.CallbackQuery != nil {
-			s.execHandler(s.CallbackQueryHandler, ut)
+			go s.exec(s.CallbackQueryHandler, ut)
 		}
 
 	}
 }
 
-func (s *TelegramBot) execHandler(fun *Handler, ut tgbotapi.Update) {
+func (s *TelegramBot) exec(fun *Handler, ut tgbotapi.Update) {
 	if fun != nil {
 		if err := (*fun)(s.Instance, ut); err != nil {
 			log.Println(err)
