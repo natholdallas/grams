@@ -16,7 +16,7 @@ func TODO(ctx *tgbotapi.BotAPI, ut tgbotapi.Update) error {
 }
 
 type Bot struct {
-	Instance *tgbotapi.BotAPI
+	*tgbotapi.BotAPI
 	Schedule *cron.Cron
 
 	AllowedUpdates []string
@@ -40,13 +40,13 @@ type Bot struct {
 	callbackQuery     Handler
 }
 
-func New(token string) Bot {
+func New(token string) *Bot {
 	instance, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		panic(err)
 	}
-	return Bot{
-		Instance:        instance,
+	return &Bot{
+		BotAPI:          instance,
 		Schedule:        cron.New(cron.WithSeconds()),
 		commands:        []tgbotapi.BotCommand{},
 		commandHanlders: make(map[string]Handler),
@@ -55,7 +55,7 @@ func New(token string) Bot {
 }
 
 func (s *Bot) NewTask(spec string, fun TaskHandler) (cron.EntryID, error) {
-	return s.Schedule.AddFunc(spec, func() { fun(s.Instance) })
+	return s.Schedule.AddFunc(spec, func() { fun(s.BotAPI) })
 }
 
 func (s *Bot) RemoveTask(id cron.EntryID) {
@@ -101,7 +101,7 @@ func (s *Bot) OnCallbackQuery(fun Handler) {
 
 func (s *Bot) Listen() {
 	s.Schedule.Start()
-	s.Instance.Request(tgbotapi.NewSetMyCommands(s.commands...))
+	s.Request(tgbotapi.NewSetMyCommands(s.commands...))
 
 	update := tgbotapi.NewUpdate(0)
 	update.AllowedUpdates = s.AllowedUpdates
@@ -109,7 +109,7 @@ func (s *Bot) Listen() {
 	update.Offset = s.Offset
 	update.Timeout = s.Timeout
 
-	for ut := range s.Instance.GetUpdatesChan(update) {
+	for ut := range s.GetUpdatesChan(update) {
 		// global update event
 		go s.exec(s.updateHandler, ut)
 
@@ -159,5 +159,5 @@ func (s *Bot) exec(fun Handler, ut tgbotapi.Update) {
 	if fun == nil {
 		return
 	}
-	fun(s.Instance, ut)
+	fun(s.BotAPI, ut)
 }
